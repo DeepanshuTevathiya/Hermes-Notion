@@ -1,0 +1,39 @@
+﻿name: Hermes-Notion Scan & Draft Pipeline
+
+on:
+  schedule:
+    # Trigger 3x per day (e.g. 02:00, 08:00, 14:00 UTC)
+    - cron: '0 2,8,14 * * *'
+  workflow_dispatch:
+
+jobs:
+  scan-and-draft:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pypdf
+
+      - name: Run Scan & Draft Pipeline
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_PROFILE_DB_ID: ${{ secrets.NOTION_PROFILE_DB_ID }}
+          NOTION_OPPORTUNITIES_DB_ID: ${{ secrets.NOTION_OPPORTUNITIES_DB_ID }}
+          NOTION_RUN_LOG_DB_ID: ${{ secrets.NOTION_RUN_LOG_DB_ID }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          TARGET_FIELD: ${{ secrets.TARGET_FIELD }}
+          PYTHONIOENCODING: "utf-8"
+        run: |
+          python scan_and_draft.py "GitHub Actions Cron"
