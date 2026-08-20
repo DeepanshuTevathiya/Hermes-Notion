@@ -132,8 +132,10 @@ def run_send_approved(trigger_type: str = "Cron"):
 
             target_recipient = company_email
 
+            current_attempts = opp.get("send_attempts", 0)
+
             try:
-                print(f"      Sending email for: {job_title} @ {company} to {target_recipient}...")
+                print(f"      Sending email for: {job_title} @ {company} to {target_recipient} (Attempt {current_attempts + 1}/3)...")
                 send_email_with_in_memory_resume(
                     smtp_user=smtp_user,
                     smtp_password=smtp_password,
@@ -144,14 +146,23 @@ def run_send_approved(trigger_type: str = "Cron"):
                     resume_content=tailored_resume,
                 )
 
-                # Step 3: Update Notion status to "Sent"
-                update_opportunity_status(notion, page_id, "Sent")
+                # Step 3: Update Notion status to "Sent" and record attempts
+                update_opportunity_status(notion, page_id, "Sent", send_attempts=current_attempts + 1)
                 print(f"      -> Successfully sent & updated status to 'Sent' for {company}!")
                 sent_count += 1
 
             except Exception as e:
-                err_msg = f"Failed to send email for {company}: {str(e)}"
-                print(f"      [Error] {err_msg}")
+                new_attempts = current_attempts + 1
+                if new_attempts >= 3:
+                    # Exceeded retry cap -> mark as Send Failed
+                    update_opportunity_status(notion, page_id, "Send Failed", send_attempts=new_attempts)
+                    err_msg = f"Failed to send email for {company} after 3 attempts. Status set to 'Send Failed' for manual review. Error: {str(e)}"
+                    print(f"      [Max Retries Reached] {err_msg}")
+                else:
+                    # Increment attempt count, keep as Approved for next run
+                    update_opportunity_status(notion, page_id, "Approved", send_attempts=new_attempts)
+                    err_msg = f"Failed attempt {new_attempts}/3 for {company}. Will retry next run. Error: {str(e)}"
+                    print(f"      [Error] {err_msg}")
                 errors.append(err_msg)
 
         # Step 4: Record Run Log

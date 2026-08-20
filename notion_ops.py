@@ -17,7 +17,7 @@ Notion DB property names:
 """
 
 import io
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import requests
 from pypdf import PdfReader
 from notion_client import Client
@@ -149,6 +149,7 @@ def write_opportunity(client: Client, db_id: str, data: dict) -> str:
         "Founder Name": {"rich_text": [{"text": {"content": data.get("founder_name", "")[:2000]}}]},
         "Founder LinkedIn": {"url": data.get("founder_linkedin", "") or None},
         "Draft Email": {"rich_text": [{"text": {"content": data.get("draft_email", "")[:2000]}}]},
+        "Send Attempts": {"number": 0},
         "Date Found": {"date": {"start": now}},
     }
     
@@ -172,18 +173,21 @@ def write_opportunity(client: Client, db_id: str, data: dict) -> str:
 # Run Log Database — WRITE
 # ---------------------------------------------------------------------------
 
+IST = timezone(timedelta(hours=5, minutes=30))
+
 def write_run_log(client: Client, db_id: str, data: dict) -> str:
     """
     Write one row to the Run Log database.
     data keys: trigger_type, jobs_found, action_taken, status, error_details
     Returns the created page ID.
     """
-    now = datetime.now(timezone.utc)
-    run_id = f"Run-{now.strftime('%Y-%m-%d-%H:%M:%S')}"
+    now_utc = datetime.now(timezone.utc)
+    now_ist = datetime.now(IST)
+    run_id = f"Run-{now_ist.strftime('%Y-%m-%d-%H:%M:%S')}"
 
     properties = {
         "Run ID": {"title": [{"text": {"content": run_id}}]},
-        "Timestamp": {"date": {"start": now.isoformat()}},
+        "Timestamp": {"date": {"start": now_utc.isoformat()}},
         "Trigger Type": {"select": {"name": data.get("trigger_type", "Manual")}},
         "Jobs Found": {"number": data.get("jobs_found", 0)},
         "Action Taken": {"rich_text": [{"text": {"content": data.get("action_taken", "")[:2000]}}]},
@@ -217,6 +221,8 @@ def query_approved_opportunities(client: Client, db_id: str) -> list:
             ""
         )
         
+        send_attempts = props.get("Send Attempts", {}).get("number") or 0
+        
         opportunities.append({
             "page_id": page["id"],
             "job_title": _extract_title(props.get("Job Title", {})),
@@ -228,13 +234,17 @@ def query_approved_opportunities(client: Client, db_id: str) -> list:
             "founder_linkedin": props.get("Founder LinkedIn", {}).get("url", ""),
             "draft_email": _extract_rich_text(props.get("Draft Email", {})),
             "company_email": company_email,
+            "send_attempts": send_attempts,
         })
     return opportunities
 
 
-def update_opportunity_status(client: Client, page_id: str, new_status: str):
-    """Update the Status select property of an opportunity page."""
+def update_opportunity_status(client: Client, page_id: str, new_status: str, send_attempts: int = None):
+    """Update the Status select property and optionally Send Attempts of an opportunity page."""
+    properties = {"Status": {"select": {"name": new_status}}}
+    if send_attempts is not None:
+        properties["Send Attempts"] = {"number": send_attempts}
     client.pages.update(
         page_id=page_id,
-        properties={"Status": {"select": {"name": new_status}}},
+        properties=properties,
     )
