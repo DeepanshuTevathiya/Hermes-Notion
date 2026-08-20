@@ -52,7 +52,7 @@ def _is_valid_company_email(email: str) -> bool:
     return True
 
 
-def find_company_website(company_name: str) -> str:
+def find_company_website(company_name: str, search_hint: str = "") -> str:
     """
     Search Bing for the company's official website using cite tag extraction.
     Returns the URL or empty string. Never fails the pipeline.
@@ -67,7 +67,7 @@ def find_company_website(company_name: str) -> str:
     ]
 
     try:
-        query = f"{company_name}"
+        query = f'"{company_name}" {search_hint}'.strip()
         url = f"https://www.bing.com/search?q={requests.utils.quote(query)}"
         resp = requests.get(url, headers=HEADERS, timeout=8)
         if resp.status_code == 200:
@@ -116,7 +116,7 @@ def find_company_email(company_name: str, company_website: str = "") -> str:
             # Strategy 1: Find mailto: links
             soup = BeautifulSoup(page_text, "html.parser")
             for a in soup.find_all("a", href=True):
-                href = a["href"]
+                href = a.get("href", "")
                 if href.startswith("mailto:"):
                     email = href.replace("mailto:", "").split("?")[0].strip()
                     if _is_valid_company_email(email):
@@ -148,7 +148,45 @@ def find_company_email(company_name: str, company_website: str = "") -> str:
     return found_emails.pop()
 
 
-def scrape_unstop_internships(target_field: str, limit: int = 3) -> list:
+def extract_company_context(company_website: str, company_name: str = "") -> str:
+    """Extract text from homepage and /about to give the LLM context on what the company does."""
+    if not company_website:
+        return ""
+    
+    context = ""
+    candidate_paths = ["/", "/about", "/about-us"]
+    for path in candidate_paths:
+        try:
+            page_url = urljoin(company_website, path)
+            resp = requests.get(page_url, headers=HEADERS, timeout=6, allow_redirects=True)
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, "html.parser")
+                # Remove scripts, styles, and boilerplate navigation
+                for element in soup(["script", "style", "nav", "footer", "header"]):
+                    element.decompose()
+                text = soup.get_text(separator=" ", strip=True)
+                context += f"\n--- Page: {path} ---\n{text[:1000]}"
+                if len(context) > 2000:
+                    break
+        except Exception:
+            continue
+            
+    # FIX B: Sanity check to verify scraped text actually mentions the company
+    if company_name and context:
+        import re
+        # Strip common generic suffixes to get the core company name
+        core_name = re.sub(r'(?i)\b(pvt|ltd|inc|llc|corp|technologies|solutions|group|private|limited)\b', '', company_name).strip().lower()
+        core_name = re.sub(r'[^a-z0-9 ]+', '', core_name).strip()
+        
+        # If the core name isn't found in the text, it's highly likely a mismatched website (e.g. Fortune Magazine instead of Fortune Analytics)
+        if core_name and core_name not in context.lower():
+            print(f"      [!] Context verification failed for {company_website}: '{core_name}' not mentioned in text.")
+            return ""
+            
+    return context.strip()
+
+
+def scrape_unstop_internships(target_field: str, limit: int = 10) -> list:
     """
     Query Unstop public internship search for the target field/keywords.
     Returns a list of dicts with job info, founder info, and discovered company email.
@@ -189,8 +227,10 @@ def scrape_unstop_internships(target_field: str, limit: int = 3) -> list:
         founder_info = find_founder_info(company)
 
         # Discover company website and email
-        company_website = find_company_website(company)
+        search_hint = f"{title} startup OR careers"
+        company_website = find_company_website(company, search_hint=search_hint)
         company_email = find_company_email(company, company_website)
+        company_context = extract_company_context(company_website, company_name=company)
 
         print(f"      Company: {company} | Website: {company_website or 'Not found'} | Email: {company_email or 'Not found'}")
 
@@ -200,9 +240,10 @@ def scrape_unstop_internships(target_field: str, limit: int = 3) -> list:
             "job_url": job_url,
             "jd_text": clean_jd,
             "required_skills": skills,
-            "founder_name": founder_info.get("founder_name", ""),
-            "founder_linkedin": founder_info.get("founder_linkedin", ""),
+            "founder_name": founder_info["name"],
+            "founder_linkedin": founder_info["linkedin_url"],
             "company_email": company_email,
+            "company_context": company_context
         })
 
     return results

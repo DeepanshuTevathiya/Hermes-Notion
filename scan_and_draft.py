@@ -72,8 +72,8 @@ def run_pipeline(trigger_type: str = "Cron"):
         print(f"      Candidate: {candidate_name} | Target: {target_field}")
 
         # Step 2: Query Unstop for matching internships
-        print(f"[2/4] Scraping Unstop for '{target_field}' (limit: 3)...")
-        scraped_jobs = scrape_unstop_internships(target_field, limit=3)
+        print(f"[2/4] Scraping Unstop for '{target_field}' (limit: 10)...")
+        scraped_jobs = scrape_unstop_internships(target_field, limit=10)
         jobs_found = len(scraped_jobs)
         print(f"      Scraped {jobs_found} opportunities from Unstop.")
 
@@ -132,8 +132,12 @@ def run_pipeline(trigger_type: str = "Cron"):
                     founder_name,
                     matching_skills,
                     resume_text,
+                    job.get("company_context", "")
                 )
 
+                # Check if we need manual review due to missing/failed company context
+                needs_review = not bool(job.get("company_context", ""))
+                
                 # 3d: Write to Notion Opportunities DB
                 opp_data = {
                     "job_title": title,
@@ -146,6 +150,7 @@ def run_pipeline(trigger_type: str = "Cron"):
                     "founder_linkedin": job.get("founder_linkedin", ""),
                     "draft_email": draft_email,
                     "company_email": job.get("company_email", ""),
+                    "needs_manual_review": needs_review,
                 }
                 page_id = write_opportunity(notion, cfg["NOTION_OPPORTUNITIES_DB_ID"], opp_data)
                 print(f"          -> Logged to Notion (Page ID: {page_id}) with ATS Score: {ats_score}/100")

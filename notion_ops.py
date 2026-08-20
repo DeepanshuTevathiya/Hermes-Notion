@@ -151,6 +151,7 @@ def write_opportunity(client: Client, db_id: str, data: dict) -> str:
         "Draft Email": {"rich_text": [{"text": {"content": data.get("draft_email", "")[:2000]}}]},
         "Send Attempts": {"number": 0},
         "Date Found": {"date": {"start": now}},
+        "Needs Manual Review": {"checkbox": data.get("needs_manual_review", False)},
     }
     
     # Find the actual Company Email property name from database
