@@ -105,23 +105,27 @@ def run_send_approved(trigger_type: str = "Cron"):
             draft_email = opp.get("draft_email", "")
             tailored_resume = opp.get("tailored_resume", "")
 
-            # Parse subject and body from draft
-            lines = draft_email.strip().splitlines()
+            # Robust subject & body extraction
+            lines = [l.strip() for l in draft_email.strip().splitlines() if l.strip()]
             subject = f"Internship Inquiry: {job_title} - {company}"
             body_lines = []
 
             for line in lines:
                 if line.lower().startswith("subject:"):
-                    subject = line.split(":", 1)[1].strip()
+                    parsed_subj = line.split(":", 1)[1].strip()
+                    if parsed_subj:
+                        subject = parsed_subj
                 else:
                     body_lines.append(line)
 
-            body_text = "\n".join(body_lines).strip()
+            body_text = "\n\n".join(body_lines).strip()
+            if not body_text:
+                body_text = draft_email.strip()
 
             company_email = opp.get("company_email", "").strip()
 
             if not company_email:
-                skip_msg = f"Skipped {job_title} @ {company}: No Company Email set. Fill in the 'Company Email' field in Notion before approving."
+                skip_msg = f"Skipped {job_title} @ {company}: No Company Email in Notion. Please provide a valid email in 'Company Email' column."
                 print(f"      [Skip] {skip_msg}")
                 errors.append(skip_msg)
                 continue
@@ -129,7 +133,7 @@ def run_send_approved(trigger_type: str = "Cron"):
             target_recipient = company_email
 
             try:
-                print(f"      Sending email for: {job_title} @ {company}...")
+                print(f"      Sending email for: {job_title} @ {company} to {target_recipient}...")
                 send_email_with_in_memory_resume(
                     smtp_user=smtp_user,
                     smtp_password=smtp_password,

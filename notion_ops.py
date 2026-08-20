@@ -149,9 +149,21 @@ def write_opportunity(client: Client, db_id: str, data: dict) -> str:
         "Founder Name": {"rich_text": [{"text": {"content": data.get("founder_name", "")[:2000]}}]},
         "Founder LinkedIn": {"url": data.get("founder_linkedin", "") or None},
         "Draft Email": {"rich_text": [{"text": {"content": data.get("draft_email", "")[:2000]}}]},
-        "Company Email": {"email": data.get("company_email", "") or None},
         "Date Found": {"date": {"start": now}},
     }
+    
+    # Find the actual Company Email property name from database
+    email_val = data.get("company_email", "")
+    if email_val:
+        for prop_candidate in ["Company Email", "Company  Email"]:
+            try:
+                props_with_email = dict(properties)
+                props_with_email[prop_candidate] = {"email": email_val}
+                page = client.pages.create(parent={"database_id": db_id}, properties=props_with_email)
+                return page["id"]
+            except Exception:
+                continue
+
     page = client.pages.create(parent={"database_id": db_id}, properties=properties)
     return page["id"]
 
@@ -197,6 +209,14 @@ def query_approved_opportunities(client: Client, db_id: str) -> list:
     opportunities = []
     for page in results:
         props = page["properties"]
+        
+        # Check both possible property names for email
+        company_email = (
+            props.get("Company Email", {}).get("email") or 
+            props.get("Company  Email", {}).get("email") or 
+            ""
+        )
+        
         opportunities.append({
             "page_id": page["id"],
             "job_title": _extract_title(props.get("Job Title", {})),
@@ -207,7 +227,7 @@ def query_approved_opportunities(client: Client, db_id: str) -> list:
             "founder_name": _extract_rich_text(props.get("Founder Name", {})),
             "founder_linkedin": props.get("Founder LinkedIn", {}).get("url", ""),
             "draft_email": _extract_rich_text(props.get("Draft Email", {})),
-            "company_email": props.get("Company Email", {}).get("email", "") or "",
+            "company_email": company_email,
         })
     return opportunities
 
