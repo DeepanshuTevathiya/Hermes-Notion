@@ -1,4 +1,4 @@
-﻿name: Hermes-Notion Send Approved Outreach
+name: Hermes-Notion Send Approved Outreach
 
 on:
   schedule:
@@ -9,6 +9,8 @@ on:
 jobs:
   send-approved:
     runs-on: ubuntu-latest
+    env:
+      ACTIONS_RUNNER_FORCE_ACTIONS_NODE_VERSION: "node24"
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4

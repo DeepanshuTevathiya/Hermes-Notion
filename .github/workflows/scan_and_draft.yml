@@ -1,4 +1,4 @@
-﻿name: Hermes-Notion Scan & Draft Pipeline
+name: Hermes-Notion Scan & Draft Pipeline
 
 on:
   schedule:
@@ -9,6 +9,8 @@ on:
 jobs:
   scan-and-draft:
     runs-on: ubuntu-latest
+    env:
+      ACTIONS_RUNNER_FORCE_ACTIONS_NODE_VERSION: "node24"
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
