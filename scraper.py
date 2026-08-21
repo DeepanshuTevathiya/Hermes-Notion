@@ -55,6 +55,7 @@ def _is_valid_company_email(email: str) -> bool:
 def find_company_website(company_name: str, search_hint: str = "") -> str:
     """
     Search Bing for the company's official website using cite tag extraction.
+    Verifies the candidate URL actually mentions the company name before accepting it.
     Returns the URL or empty string. Never fails the pipeline.
     """
     if not company_name or company_name.lower() in ["company", "confidential", "stealth"]:
@@ -64,7 +65,12 @@ def find_company_website(company_name: str, search_hint: str = "") -> str:
         "linkedin.com", "facebook.com", "twitter.com", "instagram.com",
         "unstop.com", "youtube.com", "glassdoor.com", "ambitionbox.com",
         "wikipedia.org", "crunchbase.com", "bing.com", "microsoft.com",
+        "merriam-webster.com", "dictionary.cambridge.org", "wiktionary.org",
     ]
+
+    # Build a core name for verification (strip generic suffixes)
+    core_name = re.sub(r'(?i)\b(pvt|ltd|inc|llc|corp|technologies|solutions|group|private|limited)\b', '', company_name).strip().lower()
+    core_name = re.sub(r'[^a-z0-9 ]+', '', core_name).strip()
 
     try:
         query = f'"{company_name}" {search_hint}'.strip()
@@ -77,12 +83,27 @@ def find_company_website(company_name: str, search_hint: str = "") -> str:
                 cite = r.find("cite")
                 if cite:
                     cite_text = cite.get_text().strip()
-                    # cite often shows "https://www.example.com/..."
                     if not cite_text.startswith("http"):
                         cite_text = "https://" + cite_text
                     parsed = urlparse(cite_text)
                     if parsed.hostname and not any(sd in parsed.hostname for sd in skip_domains):
-                        return f"{parsed.scheme}://{parsed.hostname}"
+                        candidate_url = f"{parsed.scheme}://{parsed.hostname}"
+                        
+                        # Verify: fetch the homepage and check if the company name appears
+                        if core_name:
+                            try:
+                                verify_resp = requests.get(candidate_url, headers=HEADERS, timeout=6, allow_redirects=True)
+                                if verify_resp.status_code == 200:
+                                    page_text = verify_resp.text.lower()
+                                    if core_name in page_text:
+                                        return candidate_url
+                                    else:
+                                        print(f"      [!] Website verification failed: {candidate_url} does not mention '{core_name}'. Trying next result...")
+                                        continue
+                            except Exception:
+                                continue
+                        else:
+                            return candidate_url
     except Exception:
         pass
     return ""
@@ -240,8 +261,8 @@ def scrape_unstop_internships(target_field: str, limit: int = 10) -> list:
             "job_url": job_url,
             "jd_text": clean_jd,
             "required_skills": skills,
-            "founder_name": founder_info["name"],
-            "founder_linkedin": founder_info["linkedin_url"],
+            "founder_name": founder_info["founder_name"],
+            "founder_linkedin": founder_info["founder_linkedin"],
             "company_email": company_email,
             "company_context": company_context
         })

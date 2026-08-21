@@ -135,8 +135,6 @@ def draft_outreach_email(client: Groq, candidate_name: str, company: str, job_ti
     """
     Draft a high-converting, concise cold email for human review.
     """
-    # FIX 1: Enforce correct spelling of the candidate name
-    candidate_name = "Deepanshu Tevathiya"
     phone_number = "+91 9318405317"
     
     recipient_greeting = f"Hi {founder_name}" if founder_name else f"Hi {company} Team"
